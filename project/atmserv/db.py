@@ -28,6 +28,5 @@ class Orcl:
             logging.error(
                 'SQL error: {}\n'
                 '\tSQL execute: {}\n'
-                '\tParams: {}'
-                    .format(info, self.cursor.statement, params)
+                '\tParams: {}'.format(info, self.cursor.statement, params)
             )
