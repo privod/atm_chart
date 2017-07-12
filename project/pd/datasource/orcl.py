@@ -113,7 +113,8 @@ class DataFrameReaderOrcl(db.Orcl):
     def get_orders(self, beg, end):
         df = psql.read_sql_query(
             con=self.connect,
-            sql=("select o.a_number order_number, o.date_reg, o.date_end\n"
+            sql=("select o.a_number order_number, o.atm_ref,"
+                 "  o.date_reg, o.date_end\n"
                  "from r_order o\n"
                  "where 1 = 1\n"
                  "  and o.service_type in (1, 2)\n"

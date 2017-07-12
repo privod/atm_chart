@@ -10,8 +10,8 @@ from project.idle import calc_idle
 # df = pd.read_csv('data/kp_all_movies.csv') #скачиваем подготовленные данные
 
 
-date_beg = dt.datetime(2017, 5, 1)
-date_end = dt.datetime(2017, 5, 31)
+date_beg = dt.date(2017, 5, 1)
+date_end = dt.date(2017, 5, 31)
 
 reader = DataFrameReaderOrcl()
 

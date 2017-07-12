@@ -1,3 +1,4 @@
 bokeh==0.12.5
 flask==0.12.2
 pandas==0.20.1
+progressbar2==3.30.2
