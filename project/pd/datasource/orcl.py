@@ -105,10 +105,14 @@ class DataFrameReaderOrcl(db.Orcl):
         return psql.read_sql_query(
             con=self.connect,
             sql=("select aa.ref atm_ref, aa.serial, aa.a_number, aa.type, aa.a_producer,\n"
-                 "  aa.model_name model, aa.city, aa.addr, aa.location, aa.bank_ref\n"
+                 "  aa.model_name model, aa.city, aa.addr, aa.location, aa.bank_ref,\n"
+                 "  aa.mon_beg, aa.mon_end, aa.tue_beg, aa.tue_end, aa.wed_beg, aa.wed_end, aa.thu_beg,\n"
+                 "  aa.thu_end, aa.fri_beg, aa.fri_end, aa.sat_beg, aa.sat_end, aa.sun_beg, aa.sun_end\n"
                  "from r_atm a\n"
                  "  inner join r_atm_arc aa on a.a_atm_arc = aa.a_atm_arc\n")
         )
+
+
 
     def get_orders(self, beg, end):
         df = psql.read_sql_query(
