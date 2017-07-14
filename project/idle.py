@@ -55,9 +55,10 @@ def get_in_repair(df_atm_order):
 
 
 def set_sw_by_service(df_sw, s_time, sw_col_name):
+    # TODO подумать ка сделать процедуру более технологичной
     for time in s_time.unique():
         cond = s_time == time       # Условие выборки
-        df_sw.loc[cond, sw_col_name] = df_sw.DAY_DT[cond] + pd.Timedelta(hours=time.hour, minutes=time.minute)
+        df_sw.loc[cond, sw_col_name] = pd.Timedelta(hours=time.hour, minutes=time.minute)
 
 
 def calc_idle(reader, date_beg, date_end):
@@ -66,55 +67,44 @@ def calc_idle(reader, date_beg, date_end):
     df_service = reader.get_service(date_beg, date_end)
     df_order = reader.get_orders(date_beg, date_end)
 
-    df_atm = df_service.merge(df_atm_all, on=['ATM_REF']).set_index('ATM_REF', False)
+    df_atm = df_service.merge(df_atm_all, on=['ATM_REF'])   #.set_index('ATM_REF', False)
 
     # Список дат для анализа
     days = dr.date_list(date_beg, date_end)
     df_day = pd.DataFrame({'DAY':[d for d in days]})
+    df_day['DAY_DT'] = pd.to_datetime(df_day.DAY)           # Опорное поле дней приведенных к datetime
+    df_day['WEEKDAY'] = df_day.DAY_DT.dt.weekday + 1        # Опорное поле дней недели
 
     df_order_day = get_order_day(df_order, df_day)
 
 # --- Рсчет сервисного окна для каждого УС ------------------------------------
-    df_atm_sw = df_cartesian(df_atm, df_day).set_index(['ATM_REF', 'DAY'], False)
+    set_sw_by_service(df_atm, df_atm.A_TIME_BEG, 'TD_SW_BEG')   # Timedelta от начала суток до открытия сервисного окна
+    set_sw_by_service(df_atm, df_atm.A_TIME_END, 'TD_SW_END')   # Timedelta от начала суток до закрытия сервисного окна
 
-    df_atm_sw['DAY_DT'] = pd.to_datetime(df_atm_sw.DAY)
-    # print(df_atm_sw)
+    df_atm_weekday = df_cartesian(df_atm, pd.DataFrame({'WEEKDAY': [1, 2, 3, 4, 5, 6, 7]})) #.set_index(['ATM_REF', 'WEEKDAY'], False)
+    cond = df_atm_weekday.WEEKDAY > df_atm_weekday.A_DAYS       # Условие выборки: Выходные дни для УС не обслуживающихся выходной по условиям обслуживания
+    df_atm_weekday.loc[cond, 'TD_SW_BEG'] = pd.to_timedelta(0)
+    df_atm_weekday.loc[cond, 'TD_SW_END'] = pd.to_timedelta(0)
 
-    # print(df_atm_sw.A_TIME_BEG)
+    df_atm_sw = pd.merge(df_atm_weekday, df_day, 'outer', on='WEEKDAY').set_index(['ATM_REF', 'DAY'], False).sort_index()
 
-    # df_atm_sw['SW_BEG'] = df_atm_sw.DAY_DT + df_atm_sw.A_TIME_BEG.apply(lambda t: pd.Timedelta(hours=t.hour, minutes=t.minute))
-    # df_atm_sw['SW_END'] = df_atm_sw.DAY_DT + df_atm_sw.A_TIME_END.apply(lambda t: pd.Timedelta(hours=t.hour, minutes=t.minute))
-    # df_atm_sw['SW_BEG'] = df_atm_sw.DAY_DT + pd.Timedelta(hours=9, minutes=0)
-    # print(df_atm_sw.SW_END)
-
-
-    # for time in df_atm_sw.A_TIME_BEG.unique():
-    #     df_atm_sw.loc[df_atm_sw.A_TIME_BEG == time, 'SW_BEG'] = df_atm_sw.DAY_DT + pd.Timedelta(hours=time.hour, minutes=time.minute)
-
-    # for time in df_atm_sw.A_TIME_END.unique():
-    #     df_loc = df_atm_sw.loc[df_atm_sw.A_TIME_END == time]
-    #     df_loc['SW_END'] = df_loc.DAY_DT + pd.Timedelta(hours=time.hour, minutes=time.minute)
-
-    set_sw_by_service(df_atm_sw, df_atm_sw.A_TIME_BEG, 'SW_BEG')
-    set_sw_by_service(df_atm_sw, df_atm_sw.A_TIME_END, 'SW_END')
-    # print(df_atm_sw)
-
-    cond = df_atm_sw['DAY_DT'].dt.weekday >= df_atm_sw.A_DAYS       # Условие выборки: Выходные дни для УС не обслуживающихся выходной по условиям обслуживания
-    df_atm_sw.loc[cond, 'SW_BEG'] = df_atm_sw.DAY_DT[cond]
-    df_atm_sw.loc[cond, 'SW_END'] = df_atm_sw.DAY_DT[cond]
-    print(df_atm_sw)
-    df_atm_sw.to_csv('data/df_atm_sw.csv', sep='\t')
-
-
-    # df_atm_sw['SW_BEG'] = df_atm_sw.A_TIME_BEG
-    # df_atm_sw['SW_END'] = df_atm_sw.A_TIME_END
-    #
-    # df_atm_sw.loc[pd.to_datetime(df_atm_sw.DAY).dt.weekday + 1 > df_atm_sw.A_DAYS, ['SW_BEG', 'SW_END']] = [dt.time(0), dt.time(0)]
+    df_atm_sw['SW_BEG'] = df_atm_sw.DAY_DT + df_atm_sw.TD_SW_BEG
+    df_atm_sw['SW_END'] = df_atm_sw.DAY_DT + df_atm_sw.TD_SW_END
 
     # TODO Необходимо учитывать режим доступности УС
 
+    # hours = (df_atm_sw.MON_END / 100).astype(int).astype(str)
+    # minuets = (df_atm_sw.MON_END % 100).astype(str)
+
+    print(df_atm_sw.loc[df_atm_sw.MON_END != 0, 'MON_END'])
+
+    print(pd.to_datetime(df_atm_sw.loc[df_atm_sw.MON_END != 0, 'MON_END'].astype(str), format='%H%M'))
+    # print(pd.to_datetime(df_atm_sw.MON_BEG, format='%H%M'))
+    # df_atm_sw[df_atm_sw.df_atm_sw.DAY_DT.dt.weekday == 0, 'SW_BEG'] =
 
 
+    print(df_atm_sw)
+    df_atm_sw.to_csv('data/df_atm_sw.csv', sep='\t')
     return
 # -----------------------------------------------------------------------------
 
