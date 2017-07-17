@@ -23,6 +23,12 @@ def gp_to_date(gp_date):
 
 
 def gp_to_time(gp_time):
+
+    if int(gp_time) > 2359:
+        return dt.time(23, 59)
+
+    gp_time = gp_time.rjust(4, '0')
+
     struct_time = tm.strptime(gp_time, _format_gp_time)
     return dt.time(struct_time.tm_hour, struct_time.tm_min, struct_time.tm_sec)
 
