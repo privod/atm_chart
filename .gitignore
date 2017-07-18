@@ -1,2 +1,5 @@
 .idea
 env
+*.egg-info
+
+data

@@ -25,21 +25,18 @@ def get_in_repair(df_atm_order):
     bar = ProgressBar(max_value=len(grp_atm_order.size())).start()
     for (atm_ref, day, sw_beg, sw_end), grp in grp_atm_order:
 
-        service_win = (pd.datetime.combine(day, sw_beg), pd.datetime.combine(day, sw_end))
-
         i += 1
         in_repair_day = []
         for order in grp.itertuples():
 
-            # if service_win is not None:
-            (beg, end) = dr.inner_join([service_win, (order.DATE_REG, order.DATE_END)])
+            (beg, end) = dr.inner_join([(sw_beg, sw_end), (order.DATE_REG, order.DATE_END)])
             if None not in [beg, end]:
                 in_repair_day.append((beg, end))
 
             if i % 100 == 0:
                 bar.update(i)
 
-        in_repair_list.extend([(atm_ref, day, *service_win, *item) for item in dr.outer_join(in_repair_day) if item is not None])
+        in_repair_list.extend([(atm_ref, day, sw_beg, sw_end, *item) for item in dr.outer_join(in_repair_day) if item is not None])
 
     bar.finish()
 
@@ -48,17 +45,10 @@ def get_in_repair(df_atm_order):
         columns=['ATM_REF', 'DAY', 'SW_BEG', 'SW_END', 'REPAIR_BEG', 'REPAIR_END']
     )
 
-    df_in_repair['SERVICE_TIME'] = df_in_repair['SW_END'] - df_in_repair['SW_BEG']
+    df_in_repair['SW_TIME'] = df_in_repair['SW_END'] - df_in_repair['SW_BEG']
     df_in_repair['REPAIR_TIME'] = df_in_repair['REPAIR_END'] - df_in_repair['REPAIR_BEG']
 
     return df_in_repair
-
-
-# def set_sw_by_service(df_sw, s_time, sw_col_name):
-#     # TODO подумать ка сделать процедуру более технологичной
-#     for time in s_time.unique():
-#         cond = s_time == time       # Условие выборки
-#         df_sw.loc[cond, sw_col_name] = pd.Timedelta(hours=time.hour, minutes=time.minute)
 
 
 def set_group_func(df, series, col_name, func):
@@ -88,73 +78,65 @@ def calc_idle(reader, date_beg, date_end):
     df_order_day = get_order_day(df_order, df_day)
 
 # --- Рсчет сервисного окна для каждого УС ------------------------------------
-#     set_sw_by_service(df_atm, df_atm.A_TIME_BEG, 'TD_SW_BEG')   # Timedelta от начала суток до открытия сервисного окна
-#     set_sw_by_service(df_atm, df_atm.A_TIME_END, 'TD_SW_END')   # Timedelta от начала суток до закрытия сервисного окна
-    set_group_func(df_atm, df_atm.A_TIME_BEG, 'TD_SW_BEG', time_to_td)  # Timedelta от начала суток до открытия сервисного окна
-    set_group_func(df_atm, df_atm.A_TIME_END, 'TD_SW_END', time_to_td)  # Timedelta от начала суток до закрытия сервисного окна
+    set_group_func(df_atm, df_atm.A_TIME_BEG, 'TD_SERVICE_BEG', time_to_td)  # Timedelta от начала суток до начала обслуживания
+    set_group_func(df_atm, df_atm.A_TIME_END, 'TD_SERVICE_END', time_to_td)  # Timedelta от начала суток до окончания обслуживания
 
-    df_atm_weekday = df_cartesian(df_atm, pd.DataFrame({'WEEKDAY': [1, 2, 3, 4, 5, 6, 7]})) #.set_index(['ATM_REF', 'WEEKDAY'], False)
-    cond = df_atm_weekday.WEEKDAY > df_atm_weekday.A_DAYS       # Условие выборки: Выходные дни для УС не обслуживающихся выходной по условиям обслуживания
-    df_atm_weekday.loc[cond, 'TD_SW_BEG'] = pd.to_timedelta(0)
-    df_atm_weekday.loc[cond, 'TD_SW_END'] = pd.to_timedelta(0)
+    # Рачет режима обслуживания по условиям дней недели
+    df_atm_wd = df_cartesian(df_atm, pd.DataFrame({'WEEKDAY': [1, 2, 3, 4, 5, 6, 7]})) #.set_index(['ATM_REF', 'WEEKDAY'], False)
+    cond = df_atm_wd.WEEKDAY > df_atm_wd.A_DAYS
+    df_atm_wd.loc[cond, 'TD_SERVICE_BEG'] = pd.to_timedelta(0)
+    df_atm_wd.loc[cond, 'TD_SERVICE_END'] = pd.to_timedelta(0)
 
-    # TODO Необходимо учитывать режим доступности УС
-    # for weekday in df_atm_weekday.WEEKDAY:
+    # Режима доступности УС сводится к двум полям (AVAIL_BEG и AVAIL_END) в разрезе недель
+    df_atm_wd.loc[df_atm_wd.WEEKDAY == 1, 'TIME_AVAIL_BEG'] = df_atm_wd.MON_BEG
+    df_atm_wd.loc[df_atm_wd.WEEKDAY == 1, 'TIME_AVAIL_END'] = df_atm_wd.MON_END
+    df_atm_wd.loc[df_atm_wd.WEEKDAY == 2, 'TIME_AVAIL_BEG'] = df_atm_wd.TUE_BEG
+    df_atm_wd.loc[df_atm_wd.WEEKDAY == 2, 'TIME_AVAIL_END'] = df_atm_wd.TUE_END
+    df_atm_wd.loc[df_atm_wd.WEEKDAY == 3, 'TIME_AVAIL_BEG'] = df_atm_wd.WED_BEG
+    df_atm_wd.loc[df_atm_wd.WEEKDAY == 3, 'TIME_AVAIL_END'] = df_atm_wd.WED_END
+    df_atm_wd.loc[df_atm_wd.WEEKDAY == 4, 'TIME_AVAIL_BEG'] = df_atm_wd.THU_BEG
+    df_atm_wd.loc[df_atm_wd.WEEKDAY == 4, 'TIME_AVAIL_END'] = df_atm_wd.THU_END
+    df_atm_wd.loc[df_atm_wd.WEEKDAY == 5, 'TIME_AVAIL_BEG'] = df_atm_wd.FRI_BEG
+    df_atm_wd.loc[df_atm_wd.WEEKDAY == 5, 'TIME_AVAIL_END'] = df_atm_wd.FRI_END
+    df_atm_wd.loc[df_atm_wd.WEEKDAY == 6, 'TIME_AVAIL_BEG'] = df_atm_wd.SAT_BEG
+    df_atm_wd.loc[df_atm_wd.WEEKDAY == 6, 'TIME_AVAIL_END'] = df_atm_wd.SAT_END
+    df_atm_wd.loc[df_atm_wd.WEEKDAY == 7, 'TIME_AVAIL_BEG'] = df_atm_wd.SUN_BEG
+    df_atm_wd.loc[df_atm_wd.WEEKDAY == 7, 'TIME_AVAIL_END'] = df_atm_wd.SUN_END
 
-    df_atm_weekday.loc[df_atm_weekday.WEEKDAY == 1, 'TIME_AVAIL_BEG'] = df_atm_weekday.MON_BEG
-    df_atm_weekday.loc[df_atm_weekday.WEEKDAY == 1, 'TIME_AVAIL_END'] = df_atm_weekday.MON_END
-    df_atm_weekday.loc[df_atm_weekday.WEEKDAY == 2, 'TIME_AVAIL_BEG'] = df_atm_weekday.TUE_BEG
-    df_atm_weekday.loc[df_atm_weekday.WEEKDAY == 2, 'TIME_AVAIL_END'] = df_atm_weekday.TUE_END
-    df_atm_weekday.loc[df_atm_weekday.WEEKDAY == 3, 'TIME_AVAIL_BEG'] = df_atm_weekday.WED_BEG
-    df_atm_weekday.loc[df_atm_weekday.WEEKDAY == 3, 'TIME_AVAIL_END'] = df_atm_weekday.WED_END
-    df_atm_weekday.loc[df_atm_weekday.WEEKDAY == 4, 'TIME_AVAIL_BEG'] = df_atm_weekday.THU_BEG
-    df_atm_weekday.loc[df_atm_weekday.WEEKDAY == 4, 'TIME_AVAIL_END'] = df_atm_weekday.THU_END
-    df_atm_weekday.loc[df_atm_weekday.WEEKDAY == 5, 'TIME_AVAIL_BEG'] = df_atm_weekday.FRI_BEG
-    df_atm_weekday.loc[df_atm_weekday.WEEKDAY == 5, 'TIME_AVAIL_END'] = df_atm_weekday.FRI_END
-    df_atm_weekday.loc[df_atm_weekday.WEEKDAY == 6, 'TIME_AVAIL_BEG'] = df_atm_weekday.SAT_BEG
-    df_atm_weekday.loc[df_atm_weekday.WEEKDAY == 6, 'TIME_AVAIL_END'] = df_atm_weekday.SAT_END
-    df_atm_weekday.loc[df_atm_weekday.WEEKDAY == 7, 'TIME_AVAIL_BEG'] = df_atm_weekday.SUN_BEG
-    df_atm_weekday.loc[df_atm_weekday.WEEKDAY == 7, 'TIME_AVAIL_END'] = df_atm_weekday.SUN_END
+    set_group_func(df_atm_wd, df_atm_wd.TIME_AVAIL_BEG, 'TD_AVAIL_BEG', time_to_td)
+    set_group_func(df_atm_wd, df_atm_wd.TIME_AVAIL_END, 'TD_AVAIL_END', time_to_td)
 
-    set_group_func(
-        df_atm_weekday,
-        df_atm_weekday.TIME_AVAIL_BEG,
-        'TD_AVAIL_BEG',
-        time_to_td
-    )
+    # Полкчение данных в разрезе дней
+    df_atm_sw = pd.merge(df_atm_wd, df_day, 'outer', on='WEEKDAY').set_index(['ATM_REF', 'DAY'], False).sort_index()
 
-    set_group_func(
-        df_atm_weekday,
-        df_atm_weekday.TIME_AVAIL_END,
-        'TD_AVAIL_END',
-        time_to_td
-    )
+    # Приведение к datetime
+    df_atm_sw['SERVICE_BEG'] = df_atm_sw.DAY + df_atm_sw.TD_SERVICE_BEG
+    df_atm_sw['SERVICE_END'] = df_atm_sw.DAY + df_atm_sw.TD_SERVICE_END
+    df_atm_sw['AVAIL_BEG'] = df_atm_sw.DAY + df_atm_sw.TD_AVAIL_BEG
+    df_atm_sw['AVAIL_END'] = df_atm_sw.DAY + df_atm_sw.TD_AVAIL_END
 
-    df_atm_sw = pd.merge(df_atm_weekday, df_day, 'outer', on='WEEKDAY').set_index(['ATM_REF', 'DAY'], False).sort_index()
+    # Обединение режимов обслуживания и доступности
+    cond = df_atm_sw['AVAIL_BEG'] > df_atm_sw['SERVICE_BEG']
+    df_atm_sw.loc[cond, 'SW_BEG'] = df_atm_sw.loc[cond, 'AVAIL_BEG']
+    df_atm_sw.loc[~cond, 'SW_BEG'] = df_atm_sw.loc[~cond, 'SERVICE_BEG']
 
-    df_atm_sw['SW_BEG'] = df_atm_sw.DAY + df_atm_sw.TD_SW_BEG
-    df_atm_sw['SW_END'] = df_atm_sw.DAY + df_atm_sw.TD_SW_END
+    cond = df_atm_sw['AVAIL_END'] < df_atm_sw['SERVICE_END']
+    df_atm_sw.loc[cond, 'SW_END'] = df_atm_sw.loc[cond, 'AVAIL_END']
+    df_atm_sw.loc[~cond, 'SW_END'] = df_atm_sw.loc[~cond, 'SERVICE_END']
 
-    # # TODO Необходимо учитывать режим доступности УС
-    #
-    # # hours = (df_atm_sw.MON_END / 100).astype(int).astype(str)
-    # # minuets = (df_atm_sw.MON_END % 100).astype(str)
-    #
-    # print(df_atm_sw.loc[df_atm_sw.MON_END != 0, 'MON_END'])
-    #
-    # print(pd.to_datetime(df_atm_sw.loc[df_atm_sw.MON_END != 0, 'MON_END'].astype(str), format='%H%M'))
-    # # print(pd.to_datetime(df_atm_sw.MON_BEG, format='%H%M'))
-    # # df_atm_sw[df_atm_sw.df_atm_sw.DAY.dt.weekday == 0, 'SW_BEG'] =
-    #
-    print(df_atm_sw)
+    cond = df_atm_sw['SERVICE_BEG'] >= df_atm_sw['SERVICE_END']
+    df_atm_sw.loc[cond, 'SW_BEG'] = df_atm_sw.loc[cond, 'DAY']
+    df_atm_sw.loc[cond, 'SW_END'] = df_atm_sw.loc[cond, 'DAY']
+
+    # print(df_atm_sw)
     df_atm_sw.to_csv('data/df_atm_sw.csv', sep='\t')
-    return
+    # return
 # -----------------------------------------------------------------------------
 
-    df_atm_order = pd.merge(df_atm_sw, df_order_day, on=['ATM_REF', 'DAY']).set_index(['ATM_REF', 'DAY'], False)
-    df_atm_order.to_csv('data/df_atm_order.csv', sep='\t')
+    df_atm_order = pd.merge(df_atm_sw, df_order_day, on=['ATM_REF', 'DAY']) #.set_index(['ATM_REF', 'DAY'], False)
+    # df_atm_order.to_csv('data/df_atm_order.csv', sep='\t')
 
-    df_in_repair = get_in_repair(df_atm_order)
+    # df_in_repair = get_in_repair(df_atm_order)
     # df_in_repair.to_pickle('data/df_in_repair.pd', compression='xz')
     df_in_repair = pd.read_pickle('data/df_in_repair.pd', compression='xz')
     df_in_repair = df_in_repair.set_index(['ATM_REF', 'DAY'], False)
@@ -165,13 +147,13 @@ def calc_idle(reader, date_beg, date_end):
     # print(df_atm_sw[['ATM_REF', 'DAY', 'SERIAL', 'CITY', 'ADDR', 'MODEL']])
 
     df_idle = pd.merge(
-        df_atm_sw[['ATM_REF', 'DAY', 'SERIAL', 'CITY', 'ADDR', 'MODEL']],
+        df_atm_sw[['ATM_REF', 'DAY', 'SERIAL', 'CITY', 'ADDR', 'MODEL', 'SW_BEG', 'SW_END']],
         df_in_repair,
         how='left',
         on=['ATM_REF', 'DAY']
     )
 
-    df_idle['AVAIL'] = 1 - (df_idle['REPAIR_TIME'] / df_idle['SERVICE_TIME'])
+    df_idle['AVAIL'] = 1 - (df_idle['REPAIR_TIME'] / df_idle['SW_TIME'])
     print(df_idle)
     df_idle.to_csv('data/df_idle.csv', sep='\t')
 
