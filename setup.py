@@ -13,6 +13,7 @@ setup(
         'bokeh',
         'flask',
         'pandas',
+        'xlsxwriter',
         'progressbar2',
     ],
     # entry_points={
