@@ -153,18 +153,22 @@ def calc_idle(reader, date_beg, date_end):
     df_idle.loc[df_idle.REPAIR_TIME.isnull() & (df_idle.SW_TIME > pd.to_timedelta(0)), 'REPAIR_TIME'] = pd.to_timedelta(0)
     df_idle['AVAIL'] = 1 - (df_idle['REPAIR_TIME'] / df_idle['SW_TIME'])
     df_idle['DAY_DATE'] = df_idle.DAY.dt.date
+    df_idle['DAY_MONTH'] = df_idle.DAY.dt.strftime('%Y.%m')
+    df_idle['DAY_NUM'] = df_idle.DAY.dt.day
 
     # print(df_idle.info())
     # df_idle.to_csv('data/df_idle.csv', sep='\t')
 
-    df_idle_pivot = df_idle.pivot_table(index=['ATM_REF'], columns=['DAY_DATE'], values=['AVAIL'])   #.reset_index()   #.set_index(['ATM_REF'])
-    # print(df_idle_pivot['AVAIL'])
-
-    df_idle_view = df_atm[['ATM_REF', 'SERIAL', 'CITY', 'ADDR', 'MODEL']].merge(
-        df_idle_pivot['AVAIL'].reset_index(),
+    df_atm_idle = df_atm[['ATM_REF', 'SERIAL', 'CITY', 'ADDR', 'MODEL']].merge(
+        df_idle,
         how='left',
         on=['ATM_REF']
+        # left_index=True,
+        # right_index=True
     )
 
-    return df_idle_view
+    df_atm_idle_pivot = df_atm_idle.pivot_table(index=['ATM_REF', 'SERIAL', 'CITY', 'ADDR', 'MODEL'], columns=['DAY_MONTH', 'DAY_NUM'], values=['AVAIL'])   #.reset_index()   #.set_index(['ATM_REF'])
+    print(df_atm_idle_pivot)
+
+    return df_atm_idle_pivot
 

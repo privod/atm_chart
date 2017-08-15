@@ -6,7 +6,7 @@ def to_excel(df_idle):
     sheet_name = 'Динамика доступности'
     writer = pd.ExcelWriter('data/df_idle.xls', engine='xlsxwriter', date_format='dd.mm.yyyy')
 
-    df_idle.to_excel(writer, sheet_name=sheet_name, startcol=0, startrow=1, index=False)
+    df_idle.to_excel(writer, sheet_name=sheet_name, startcol=0, startrow=1)
 
     # format_day = writer.book.add_format({'num_format': 'dd'})
 
